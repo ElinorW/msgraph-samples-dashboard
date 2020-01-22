@@ -3,15 +3,64 @@
 # Add steps that run tests, create a NuGet package, deploy, and more:
 # https://docs.microsoft.com/azure/devops/pipelines/languages/dotnet-core
 
-trigger:
+pr:
 - master
+- dev
 
 pool:
-  vmImage: 'ubuntu-latest'
+  vmImage: 'windows-latest'
 
 variables:
   buildConfiguration: 'Release'
 
 steps:
-- script: dotnet build --configuration $(buildConfiguration)
-  displayName: 'dotnet build $(buildConfiguration)'
+- task: UseDotNet@2
+  displayName: "Use dotnetcore3"
+  inputs:
+    packageType: sdk
+    version: 3.0.100
+
+- task: UseNode@1
+  inputs:
+    checkLatest: true
+
+- task: DotNetCoreCLI@2
+  displayName: "Restore Packages"
+  inputs:
+    command: 'restore'
+    projects: '**/*.csproj'
+    feedsToUse: select
+
+- task: DotNetCoreCLI@2
+  displayName: "Build Projects"
+  inputs:
+    command: 'build'
+    projects: '**/*.csproj'
+    arguments: '--configuration $(buildConfiguration)'
+
+- task: Npm@1
+  displayName: "Install NPM packages"
+  inputs:
+    command: 'install'
+    workingDir: '$(System.DefaultWorkingDirectory)//SamplesDashboard//SamplesDashboard//ClientApp'
+
+- task: Npm@1
+  displayName: "Pre-emptive npm Build"
+  inputs:
+    command: 'custom'
+    workingDir: '$(System.DefaultWorkingDirectory)//SamplesDashboard//SamplesDashboard//ClientApp'
+    customCommand: 'run build'
+
+- task: DotNetCoreCLI@2
+  displayName: "Run Tests"
+  inputs:
+    command: test
+    projects: '**/*Tests/*.csproj'
+    arguments: '--configuration $(buildConfiguration) --logger trx'
+
+- task: PublishTestResults@2
+  displayName: "Publish Test Results"
+  condition: succeededOrFailed()
+  inputs:
+    testRunner: VSTest
+    testResultsFiles: '**/*.trx'
